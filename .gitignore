@@ -1,0 +1,37 @@
+# Local environments and Python artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.pytype/
+.dmypy.json
+
+# Test and release artifacts
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+/session.json
+/tidal-dedupe-session.json
+/tidal-dedupe/
+
+# OS and runtime noise
+.DS_Store
+*.log
