@@ -58,6 +58,7 @@ def write_backup(
         ],
     }
     path: Path | None = None
+    created_file = False
     try:
         target_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         target_directory.chmod(0o700)
@@ -67,6 +68,7 @@ def write_backup(
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         descriptor = os.open(path, flags, 0o600)
+        created_file = True
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             json.dump(payload, stream, indent=2, ensure_ascii=False)
             stream.write("\n")
@@ -74,6 +76,11 @@ def write_backup(
             os.fsync(stream.fileno())
         return path
     except (OSError, ValueError, TypeError) as exc:
-        if path is not None:
-            path.unlink(missing_ok=True)
+        # Only delete files that this attempt actually created. In particular,
+        # an O_EXCL name collision must never remove somebody else's backup.
+        if created_file and path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise BackupError(f"could not save a complete backup: {exc}") from exc
