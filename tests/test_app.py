@@ -66,8 +66,9 @@ def test_changed_snapshot_skips_mutation(monkeypatch):
     monkeypatch.setattr(app, "TidalClient", make_client)
     monkeypatch.setattr(app, "_select_playlists", lambda _: [playlist])
     monkeypatch.setattr(app, "_confirm", lambda: True)
+    monkeypatch.setattr(app, "write_backup", lambda _: "test-backup.json")
 
-    assert app.run() == 0
+    assert app.run() == 1
     assert created[0].mutation_calls == 0
 
 
