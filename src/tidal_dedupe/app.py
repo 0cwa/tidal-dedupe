@@ -178,7 +178,7 @@ def run(*, dry_run: bool = False, across_playlists: bool | None = None, backup: 
     if backup:
         try:
             backup_path = write_backup([
-                (str(playlist.id), _playlist_label(playlist), snapshot)
+                (str(playlist.id), str(getattr(playlist, "name", None) or getattr(playlist, "title", None) or "Untitled playlist"), snapshot)
                 for playlist, snapshot in snapshots
             ])
         except BackupError as exc:
