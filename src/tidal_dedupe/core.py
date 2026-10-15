@@ -6,6 +6,7 @@ This module deliberately knows nothing about tidalapi or network mutation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 from .models import ItemKind, PlaylistEntry, PlaylistSnapshot
 
@@ -22,6 +23,7 @@ class DuplicateRemoval:
     retained_index: int
     track_id: str
     entry: PlaylistEntry
+    retained_playlist_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,32 +45,52 @@ class DeduplicationPlan:
         return deletion_chunks(self.removal_indices, maximum_size)
 
 
-def plan_deduplication(snapshot: PlaylistSnapshot) -> DeduplicationPlan:
-    """Plan removal of later exact track-ID occurrences in one playlist.
-
-    Videos are deliberately retained and unsupported entries cause a fail-closed
-    error.  Seen IDs are local to this call, so separate playlists cannot
-    influence one another.
-    """
-
-    first_index_by_track_id: dict[str, int] = {}
+def _plan_snapshot(
+    snapshot: PlaylistSnapshot,
+    playlist_id: str | None,
+    first_occurrences: dict[str, tuple[str | None, int]],
+) -> DeduplicationPlan:
     removals: list[DuplicateRemoval] = []
-
     for index, entry in enumerate(snapshot.entries):
         if entry.kind is ItemKind.UNSUPPORTED:
-            raise UnsafePlaylistSnapshotError(
-                f"unsupported playlist item at position {index}"
-            )
+            raise UnsafePlaylistSnapshotError(f"unsupported playlist item at position {index}")
         if entry.kind is not ItemKind.TRACK:
             continue
-
-        retained_index = first_index_by_track_id.setdefault(entry.item_id, index)
-        if retained_index != index:
+        first = first_occurrences.get(entry.item_id)
+        if first is None:
+            first_occurrences[entry.item_id] = (playlist_id, index)
+        else:
+            retained_playlist_id, retained_index = first
             removals.append(
-                DuplicateRemoval(index, retained_index, entry.item_id, entry)
+                DuplicateRemoval(index, retained_index, entry.item_id, entry, retained_playlist_id)
             )
-
     return DeduplicationPlan(snapshot=snapshot, removals=tuple(removals))
+
+
+def plan_deduplication(snapshot: PlaylistSnapshot) -> DeduplicationPlan:
+    """Remove later exact track IDs within this one playlist only."""
+    return _plan_snapshot(snapshot, None, {})
+
+
+def plan_ordered_playlists(
+    snapshots: Sequence[tuple[str, PlaylistSnapshot]], *, across_playlists: bool = False
+) -> tuple[DeduplicationPlan, ...]:
+    """Plan in priority order: higher playlists retain tracks found lower down.
+
+    With across_playlists=False each playlist is independent. Videos never
+    participate. Unsupported items fail closed, including in keeper playlists.
+    """
+    seen_playlist_ids: set[str] = set()
+    first_occurrences: dict[str, tuple[str | None, int]] = {}
+    plans: list[DeduplicationPlan] = []
+    for playlist_id, snapshot in snapshots:
+        if not playlist_id or playlist_id in seen_playlist_ids:
+            raise ValueError("playlist IDs must be unique and non-empty")
+        seen_playlist_ids.add(playlist_id)
+        if not across_playlists:
+            first_occurrences.clear()
+        plans.append(_plan_snapshot(snapshot, playlist_id, first_occurrences))
+    return tuple(plans)
 
 
 def expected_snapshot(
