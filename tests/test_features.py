@@ -1,6 +1,7 @@
 """Fake-only regression coverage for cross-playlist priority and automatic backups."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import sys
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tidal_dedupe import app
+from tidal_dedupe import backup as backup_module
 from tidal_dedupe.backup import BackupError, write_backup
 from tidal_dedupe.core import UnsafePlaylistSnapshotError, plan_ordered_playlists
 from tidal_dedupe.models import DisplayMetadata, ItemKind, PlaylistEntry, PlaylistSnapshot
@@ -179,3 +181,20 @@ def test_interactive_reorder_and_default_off_toggle(monkeypatch):
     assert [playlist.id for playlist in app._order_playlists([a, b, c])] == ["c", "a", "b"]
     assert app._choose_cross_playlist_mode() is True
     assert defaults == [False]
+
+def test_backup_name_collision_does_not_delete_an_existing_file(tmp_path, monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 15, 13, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(backup_module, "datetime", FixedDatetime)
+    monkeypatch.setattr(backup_module.secrets, "token_hex", lambda _: "fixed")
+    directory = tmp_path / "backups"
+    directory.mkdir()
+    existing = directory / "playlists-20261015T130000Z-fixed.json"
+    existing.write_text("keep this backup", encoding="utf-8")
+
+    with pytest.raises(BackupError):
+        write_backup([("p", "Playlist", snapshot(track("a")))], directory=directory)
+    assert existing.read_text(encoding="utf-8") == "keep this backup"
