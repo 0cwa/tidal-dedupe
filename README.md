@@ -95,9 +95,9 @@ To choose scope through command-line flags rather than the interactive toggle:
 ### Automatic backups (ON by default)
 
 Backups are timestamped JSON exports saved under
-~/.local/state/tidal-dedupe/backups/ (or the XDG_STATE_HOME equivalent).
-The backup directory is owner-only (0700), and each file is owner-only (0600).
-The exact backup path is printed before deletion.
+`~/.local/state/tidal-dedupe/backups/` (or the `XDG_STATE_HOME` equivalent).
+On Unix-like systems, the backup directory is mode `0700` and each
+file is mode `0600`. The exact backup path is printed before deletion.
 
 Each backup stores the **original ordered entries of every selected playlist**
 with playlist IDs, titles, item positions, track/video IDs, and display
@@ -106,10 +106,13 @@ safe if you need to reconstruct the original collection.
 
 **This is a local recovery export, not a one-click TIDAL restore**: no
 automatic import/rollback is implemented. If necessary, consult the backed-up
-IDs and their ordering to reconstruct a playlist. Running with
---no-backup disables this safeguard for that run only; doing so is **not
-recommended**. Automatic backups are ON again on the next run. A dry run
-neither mutates playlists nor needs to write a backup.
+IDs and their ordering to reconstruct a playlist. See the
+[backup recovery guide](docs/recovery.md) for the format, inspection commands
+and recovery instructions.
+
+Running with `--no-backup` disables this safeguard for **that run only**;
+doing so is **not recommended**. Automatic backups are ON again on the next
+run. A dry run neither mutates playlists nor needs to write a backup.
 
 ## Login and session privacy
 
@@ -128,7 +131,8 @@ sign out locally, delete that specific file and run the tool again to log in.
 ## Development and verification
 
 The test suite is fake-only: it does not authenticate with TIDAL or make live
-playlist changes.
+playlist changes. The GitHub Actions workflow runs tests, source compilation
+and package-build checks on Python 3.11 and 3.12 for PRs and main.
 
 ```bash
 .venv/bin/python -m pytest
