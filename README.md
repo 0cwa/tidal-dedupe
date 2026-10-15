@@ -10,34 +10,40 @@ duplicate additions without metadata-based guesses.
 
 ## Safety model
 
-Before changing a playlist, the tool:
+Before any deletion, the tool:
 
-- shows the exact entries and positions it proposes to remove, then requires
-  explicit confirmation (the default is **No**);
-- rereads the complete playlist immediately before removal and skips it if its
-  ordered item IDs or item types changed after the preview;
-- removes positions from the end of the playlist towards the beginning, in
-  batches of at most 50, so earlier positions stay valid; and
-- rereads the playlist afterward and verifies the complete expected ordering.
+- previews **every** proposed removal with track ID and position and requires an explicit Yes (the default is **No**);
+- rereads **all selected playlists** before changing anything, including any higher-priority playlist that keeps its tracks but has no removals; a changed item ID, type or order aborts the run;
+- creates an **automatic local backup (ON by default)** of the original full selection before requesting any deletion. If writing the backup fails, no deletions are attempted;
+- revalidates each target playlist again immediately before removal;
+- removes from highest to lowest position in batches of no more than 50, then rereads and verifies the complete expected ordering.
 
-It fails closed: an incomplete read, an unsupported item type, or an uncertain
-mutation stops processing rather than guessing. A failed scan means **no
-selected playlist is changed**. If an error occurs after a mutation request,
-the remote playlist state may be uncertain; inspect it in TIDAL before running
-the tool again.
+It fails closed on incomplete reads, unsupported item types, changed playlists,
+failed backups, and uncertain mutations. If an error occurs **during** a
+multi-playlist operation, earlier playlists may already have been changed.
+Inspect the backup and current TIDAL state before proceeding; the tool cannot
+automatically roll back remote mutations.
 
-## What is and is not a duplicate
+## Duplicate matching and priority
 
 | Item | Result |
 | --- | --- |
 | Later entry with the exact same TIDAL **track ID** | Proposed for removal |
-| First entry with a track ID | Kept |
-| Different track IDs, even with the same title, artist, album, or ISRC | Kept |
-| Videos | Kept |
-| Unknown/unsupported playlist items | Playlist scan is aborted safely |
+| First entry with that exact ID | Kept |
+| Different IDs with the same artist/title/album/ISRC | Both kept |
+| Videos | Always kept |
+| Unsupported item type | Entire scan aborts before mutation |
 
-Duplicates are evaluated independently for each playlist; the tool never
-compares tracks across playlists.
+**Within-playlist mode (default, OFF cross-playlist toggle):** repeated track IDs
+are removed independently within each playlist. Other playlists cannot affect
+the plan.
+
+**Cross-playlist mode (ON):** compare **all selected playlists in priority
+order**. The **top playlist KEEPS** the track; later copies in lower playlists
+are removed. This also removes duplicates within a playlist. After turning
+cross-playlist mode on in the selector, use **Move UP** or **Move DOWN** to
+reorder priorities; the terminal prints a prominent **CROSS-PLAYLIST MODE ON**
+banner and the full ordering each time. Non-selected playlists are untouched.
 
 ## Install
 
@@ -60,23 +66,53 @@ For a local checkout instead:
 
 Start with a non-mutating preview:
 
-```bash
+~~~bash
 .venv/bin/tidal-dedupe --dry-run
-```
+~~~
 
-Choose the playlists to scan. The tool lists each proposed removal, including
-its TIDAL track ID and playlist position. `--dry-run` never requests a playlist
-mutation.
+Select playlists, then decide whether **CROSS-PLAYLIST MODE** should be on.
+The mode starts **OFF**. If enabled, order playlists with Move UP / Move DOWN:
+top priority keeps tracks, lower priorities lose matching track IDs. Review
+every proposed removal and its keeper playlist/position.
 
-When the preview looks right, run without the flag:
+When the preview looks right, run without dry-run:
 
-```bash
+~~~bash
 .venv/bin/tidal-dedupe
-```
+~~~
 
-Choose playlists again, review the preview, and answer the confirmation prompt.
-Only playlists owned by the logged-in TIDAL user that the installed TIDAL client
-can mutate are offered.
+The tool requests explicit confirmation (default No), checks all selected
+playlists for changes, writes a backup, and only then begins deleting.
+Only user-owned playlists that can be edited through tidalapi are offered.
+
+To choose scope through command-line flags rather than the interactive toggle:
+
+~~~bash
+.venv/bin/tidal-dedupe --across-playlists --dry-run
+.venv/bin/tidal-dedupe --within-playlists
+~~~
+
+### Automatic backups (ON by default)
+
+Backups are timestamped JSON exports saved under
+`~/.local/state/tidal-dedupe/backups/` (or the `XDG_STATE_HOME` equivalent).
+On Unix-like systems, the backup directory is mode `0700` and each
+file is mode `0600`. The exact backup path is printed before deletion.
+
+Each backup stores the **original ordered entries of every selected playlist**
+with playlist IDs, titles, item positions, track/video IDs, and display
+metadata, including entries that will remain. Keep these files somewhere
+safe if you need to reconstruct the original collection.
+
+**This is a local recovery export, not a one-click TIDAL restore**: no
+automatic import/rollback is implemented. If necessary, consult the backed-up
+IDs and their ordering to reconstruct a playlist. See the
+[backup recovery guide](docs/recovery.md) for the format, inspection commands
+and recovery instructions.
+
+Running with `--no-backup` disables this safeguard for **that run only**;
+doing so is **not recommended**. Automatic backups are ON again on the next
+run. A dry run neither mutates playlists nor needs to write a backup.
 
 ## Login and session privacy
 
@@ -95,7 +131,8 @@ sign out locally, delete that specific file and run the tool again to log in.
 ## Development and verification
 
 The test suite is fake-only: it does not authenticate with TIDAL or make live
-playlist changes.
+playlist changes. The GitHub Actions workflow runs tests, source compilation
+and package-build checks on Python 3.11 and 3.12 for PRs and main.
 
 ```bash
 .venv/bin/python -m pytest
