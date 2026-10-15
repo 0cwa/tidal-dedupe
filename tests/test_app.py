@@ -79,7 +79,7 @@ def test_final_verification_requires_complete_expected_snapshot(monkeypatch):
 
     class FakeClient:
         def __init__(self, _session):
-            self.snapshots = iter((original, original, wrong_final))
+            self.snapshots = iter((original, original, original, wrong_final))
             self.mutation_calls = 0
 
         def editable_playlists(self):
